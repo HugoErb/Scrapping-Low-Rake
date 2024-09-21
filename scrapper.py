@@ -3,7 +3,7 @@ from discord_webhook import DiscordWebhook
 import time
 
 # Constante : seuil de pourcentage de retour
-RETURN_THRESHOLD = 96.0
+RETURN_THRESHOLD = 98.0
 
 # Liste des matchs pour lesquels l'alerte a déjà été levée
 alerted_matches = set()
@@ -55,7 +55,7 @@ def scrape_cotes():
                 try:
                     cote_value = float(cote_text)
                     if cote_value > RETURN_THRESHOLD:  # Utilisation du seuil défini
-                        alert_message += f"Alert: Le match {match_name} dépasse {RETURN_THRESHOLD}% avec un rake de {cote_value}%\n"
+                        alert_message += f"Alerte : Le match {match_name} dépasse {RETURN_THRESHOLD}% avec un retour de {cote_value}%\n"
 
                         # Ajouter le match à la liste des alertes
                         alerted_matches.add(match_name)
