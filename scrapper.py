@@ -9,7 +9,7 @@ RETURN_THRESHOLD = 98.0
 alerted_matches = set()
 
 # URL du webhook Discord
-DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1286997439081086976/JFpf97871cWtOiXLqxxby-yeoAciijdZEkw8xmhWxSfqjCYGRG6h_rxX8X091FnUW-kF'
+DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1287478753877823591/w5pgU1Xc6DRbKZ5wLztFJmc2wBJ9FxkjfHdM02GCKdO00CDMtqMo2mezCsw0pxh-aRlb'
 
 def envoyer_alerte_discord(message):
     webhook = DiscordWebhook(url=DISCORD_WEBHOOK_URL, content=message)
@@ -54,7 +54,7 @@ def scrape_cotes():
                 cote_text = retour_element.inner_text().replace('%', '').replace(',', '.').strip()
                 try:
                     cote_value = float(cote_text)
-                    if cote_value > RETURN_THRESHOLD:  # Utilisation du seuil défini
+                    if 105 >= cote_value >= RETURN_THRESHOLD:
                         alert_message += f"Alerte : Le match {match_name} dépasse {RETURN_THRESHOLD}% avec un retour de {cote_value}%\n"
 
                         # Ajouter le match à la liste des alertes
