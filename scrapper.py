@@ -1,10 +1,25 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 from discord_webhook import DiscordWebhook
 import time
+from datetime import datetime, timedelta
 from constants import *  # Importer toutes les constantes
 
 # Dictionnaire pour stocker les matchs déjà alertés avec leur dernier pourcentage de retour
 alerted_matches = {}
+
+def log_message(message):
+    """
+    Affiche un message avec la date et l'heure actuelles au format français, avec un décalage de 2 heures ajouté.
+
+    Args:
+        message (str): Le message à afficher avec l'horodatage.
+    
+    Returns:
+        None
+    """
+    current_time = datetime.now() + timedelta(hours=2)
+    formatted_time = current_time.strftime("%d/%m/%Y %H:%M:%S")
+    print(f"[{formatted_time}] {message}")
 
 def envoyer_alerte_discord(message):
     """
@@ -20,9 +35,9 @@ def envoyer_alerte_discord(message):
     webhook = DiscordWebhook(url=DISCORD_WEBHOOK_URL, content=message)
     response = webhook.execute()
     if response.status_code in HTTP_SUCCESS_CODES:
-        print(DISCORD_SUCCESS_MESSAGE.format(message=message))
+        log_message(DISCORD_SUCCESS_MESSAGE.format(message=message))
     else:
-        print(DISCORD_ERROR_MESSAGE.format(status_code=response.status_code))
+        log_message(DISCORD_ERROR_MESSAGE.format(status_code=response.status_code))
 
 def scrape_cotes():
     """
@@ -82,7 +97,7 @@ def scrape_cotes():
                                 alerted_matches[match_name] = cote_value
 
                     except ValueError:
-                        print(f"Impossible de convertir la cote pour le match {match_name}")
+                        log_message(f"Impossible de convertir la cote pour le match {match_name}")
 
             if alert_message:
                 # Ajouter le lien à la fin du message
@@ -93,7 +108,7 @@ def scrape_cotes():
 
         except PlaywrightTimeoutError:
             # Gestion de l'erreur si les données JavaScript ne sont pas chargées dans le délai imparti
-            print(TIMEOUT_ERROR_MESSAGE.format(minutes=CHECK_INTERVAL_MINUTES))
+            log_message(TIMEOUT_ERROR_MESSAGE.format(minutes=CHECK_INTERVAL_MINUTES))
         
         finally:
             browser.close()
@@ -104,7 +119,7 @@ while True:
         scrape_cotes()
     except Exception as e:
         # Capture et gestion de toutes les erreurs
-        print(f"Une erreur est survenue : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.")
+        log_message(f"Une erreur est survenue : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.")
     
-    print(f"Attente de {CHECK_INTERVAL_MINUTES} minutes avant la prochaine vérification...")
+    log_message(f"Attente de {CHECK_INTERVAL_MINUTES} minutes avant la prochaine vérification...")
     time.sleep(CHECK_INTERVAL_MINUTES * 60)  # Conversion en secondes
