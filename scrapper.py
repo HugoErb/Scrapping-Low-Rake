@@ -100,9 +100,6 @@ def scrape_cotes():
                         log_message(f"Impossible de convertir la cote pour le match {match_name}")
 
             if alert_message:
-                # Ajouter le lien à la fin du message
-                alert_message += ALERT_FOOTER
-
                 # Envoyer toutes les alertes dans un seul message
                 envoyer_alerte_discord(alert_message)
 
