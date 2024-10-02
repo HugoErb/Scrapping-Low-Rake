@@ -19,7 +19,7 @@ TIMEOUT_ERROR_MESSAGE = "Données JavaScript non chargées dans le délai impart
 HTTP_SUCCESS_CODES = [200, 204]
 
 # Nombre de minutes entre chaque vérification
-CHECK_INTERVAL_MINUTES = 5
+CHECK_INTERVAL_MINUTES = 2
 
 # Timeout pour attendre le chargement des données JavaScript (en millisecondes)
 JS_LOAD_TIMEOUT = 20000
