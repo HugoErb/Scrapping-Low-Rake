@@ -1,25 +1,38 @@
+import logging
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 from discord_webhook import DiscordWebhook
 import time
 from datetime import datetime, timedelta
 from constants import *  # Importer toutes les constantes
 
-# Dictionnaire pour stocker les matchs déjà alertés avec leur dernier pourcentage de retour
+# Configuration du module logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s : %(message)s')
+
+# Dictionnaire pour stocker les matchs déjà alertés avec leur dernier pourcentage de retour et l'heure de l'alerte
 alerted_matches = {}
 
-def log_message(message):
+def log_message(message, level="info"):
     """
-    Affiche un message avec la date et l'heure actuelles au format français, avec un décalage de 2 heures ajouté.
+    Affiche un message avec la date et l'heure actuelles au format français, avec un décalage de 2 heures ajouté, et enregistre dans les logs avec le niveau spécifié.
 
     Args:
-        message (str): Le message à afficher avec l'horodatage.
-    
+        message (str): Le message à enregistrer dans les logs.
+        level (str): Le niveau de log ("info", "error", "debug", etc.). Par défaut "info".
+
     Returns:
         None
     """
+    logger = {
+        "info": logging.info,
+        "error": logging.error,
+        "debug": logging.debug,
+    }.get(level, logging.info)
+
+    # Ajout de 2 heures pour le fuseau horaire français
     current_time = datetime.now() + timedelta(hours=2)
     formatted_time = current_time.strftime("%d/%m/%Y %H:%M:%S")
-    print(f"[{formatted_time}] {message}")
+    logger(f"[{formatted_time}] {message}")
+
 
 def envoyer_alerte_discord(message):
     """
@@ -27,96 +40,138 @@ def envoyer_alerte_discord(message):
 
     Args:
         message (str): Le message à envoyer via le webhook Discord.
-    
+
     Returns:
-        None: Le résultat de l'envoi est imprimé dans la console, 
+        None: Le résultat de l'envoi est imprimé dans la console,
         avec un succès ou un message d'erreur en fonction du code HTTP de la réponse.
     """
     webhook = DiscordWebhook(url=DISCORD_WEBHOOK_URL, content=message)
     response = webhook.execute()
     if response.status_code in HTTP_SUCCESS_CODES:
-        log_message(DISCORD_SUCCESS_MESSAGE.format(message=message))
+        log_message(DISCORD_SUCCESS_MESSAGE.format(message=message), "info")
     else:
-        log_message(DISCORD_ERROR_MESSAGE.format(status_code=response.status_code))
+        log_message(DISCORD_ERROR_MESSAGE.format(status_code=response.status_code), "error")
 
-def scrape_cotes():
+
+def clean_old_alerts():
     """
-    Scrape les cotes des matchs sur le site web "coteur.com".
-    Vérifie si les cotes ont dépassé un seuil (RETURN_THRESHOLD), et envoie une alerte si nécessaire.
-    Si un match a déjà été alerté, une nouvelle alerte est envoyée seulement si le retour a augmenté d'au moins MIN_RETURN_INCREASE%.
+    Supprime les matchs du dictionnaire des alertes si l'alerte a plus de ALERT_EXPIRATION_HOURS heures.
+
+    Args:
+        None
 
     Returns:
-        None: Envoie des messages d'alerte sur Discord si les conditions sont remplies.
+        None: Les alertes expirées sont supprimées du dictionnaire alerted_matches.
+    """
+    current_time = datetime.now()
+    matches_to_remove = []
+
+    for match_name, (alert_time, return_value) in alerted_matches.items():
+        if current_time - alert_time > timedelta(hours=LIST_EXPIRATION_HOURS):
+            matches_to_remove.append(match_name)
+
+    # Suppression des matchs obsolètes
+    for match_name in matches_to_remove:
+        del alerted_matches[match_name]
+    log_message(f"Match(es) supprimé(s) du dictionnaire : {matches_to_remove}", "debug")
+
+
+def scrape_cotes(page):
+    """
+    Scrape les cotes des matchs sur le site web "coteur.com".
+    Si un match atteint un seuil de retour ou que le retour augmente suffisamment, une alerte est envoyée.
+
+    Args:
+        page (Page): La page Playwright utilisée pour effectuer le scraping.
+
+    Returns:
+        None: Les alertes sont envoyées si les conditions sont remplies, et les erreurs sont gérées.
+    """
+    try:
+        # Naviguer vers l'URL
+        page.goto("https://www.coteur.com/comparateur-de-cotes")
+
+        # Attendre que les données JavaScript soient chargées (avec timeout configurable)
+        page.wait_for_selector('span[data-controller="retour"]', timeout=JS_LOAD_TIMEOUT)
+
+        # Récupérer tous les matchs
+        matches = page.query_selector_all('div.events.d-flex.flex-column.flex-sm-row.flex-wrap')
+
+        alert_message = ""  # Initialiser un message vide pour collecter toutes les alertes
+
+        for match in matches:
+            # Extraction des équipes
+            team_elements = match.query_selector_all('div.event-team')
+            if len(team_elements) == 2:
+                team1 = team_elements[0].inner_text().strip()
+                team2 = team_elements[1].inner_text().strip()
+                match_name = f"{team1} vs {team2}"
+
+            # Extraction du pourcentage de retour
+            retour_element = match.query_selector('span[data-controller="retour"]')
+            if retour_element:
+                cote_text = retour_element.inner_text().replace('%', '').replace(',', '.').strip()
+                try:
+                    cote_value = float(cote_text)
+                    # Vérification des conditions pour envoyer une alerte
+                    if MAX_RETURN_THRESHOLD >= cote_value >= RETURN_THRESHOLD:
+                        # Nettoyer les anciennes alertes avant de vérifier les nouvelles
+                        clean_old_alerts()
+
+                        if match_name in alerted_matches:
+                            alert_time, last_return_value = alerted_matches[match_name]
+                            if cote_value >= last_return_value + MIN_RETURN_INCREASE:
+                                alert_message += ALERT_MESSAGE_TEMPLATE.format(
+                                    match_name=match_name, threshold=RETURN_THRESHOLD, return_value=cote_value
+                                )
+                                # Mettre à jour l'heure et le retour du match
+                                alerted_matches[match_name] = (datetime.now(), cote_value)
+                        else:
+                            # Alerter pour la première fois et stocker le retour du match avec l'heure
+                            alert_message += ALERT_MESSAGE_TEMPLATE.format(
+                                match_name=match_name, threshold=RETURN_THRESHOLD, return_value=cote_value
+                            )
+                            alerted_matches[match_name] = (datetime.now(), cote_value)
+
+                except ValueError:
+                    log_message(f"Impossible de convertir la cote pour le match {match_name}", "error")
+
+        if alert_message:
+            # Envoyer toutes les alertes dans un seul message
+            envoyer_alerte_discord(alert_message)
+
+    except PlaywrightTimeoutError:
+        # Gestion de l'erreur si les données JavaScript ne sont pas chargées dans le délai imparti
+        log_message(TIMEOUT_ERROR_MESSAGE.format(minutes=CHECK_INTERVAL_MINUTES), "error")
+
+
+def main():
+    """
+    Fonction principale qui gère l'exécution du scraping et la session Playwright.
+
+    Args:
+        None
+
+    Returns:
+        None: Le scraping est effectué à intervalles réguliers et les alertes sont envoyées.
     """
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
-        try:
-            # Naviguer vers l'URL
-            page.goto("https://www.coteur.com/comparateur-de-cotes")
+        # Boucle pour récupérer les données toutes les CHECK_INTERVAL_MINUTES minutes
+        while True:
+            try:
+                scrape_cotes(page)
+            except Exception as e:
+                # Capture et gestion de toutes les erreurs
+                log_message(
+                    f"Une erreur est survenue : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.",
+                    "error")
 
-            # Attendre que les données JavaScript soient chargées (avec timeout configurable)
-            page.wait_for_selector('span[data-controller="retour"]', timeout=JS_LOAD_TIMEOUT)
+            log_message(f"Attente de {CHECK_INTERVAL_MINUTES} minutes avant la prochaine vérification...", "info")
+            time.sleep(CHECK_INTERVAL_MINUTES * 60)  # Conversion en secondes
 
-            # Récupérer tous les matchs
-            matches = page.query_selector_all('div.events.d-flex.flex-column.flex-sm-row.flex-wrap')
 
-            alert_message = ""  # Initialiser un message vide pour collecter toutes les alertes
-
-            for match in matches:
-                # Extraction des équipes
-                team_elements = match.query_selector_all('div.event-team')
-                if len(team_elements) == 2:
-                    team1 = team_elements[0].inner_text().strip()
-                    team2 = team_elements[1].inner_text().strip()
-                    match_name = f"{team1} vs {team2}"
-
-                # Extraction du pourcentage de retour
-                retour_element = match.query_selector('span[data-controller="retour"]')
-                if retour_element:
-                    cote_text = retour_element.inner_text().replace('%', '').replace(',', '.').strip()
-                    try:
-                        cote_value = float(cote_text)
-                        # Vérification des conditions pour envoyer une alerte
-                        if MAX_RETURN_THRESHOLD >= cote_value >= RETURN_THRESHOLD:
-                            # Vérifier si le match a déjà été alerté et si le retour a augmenté suffisamment
-                            if match_name in alerted_matches:
-                                last_return_value = alerted_matches[match_name]
-                                if cote_value >= last_return_value + MIN_RETURN_INCREASE:
-                                    alert_message += ALERT_MESSAGE_TEMPLATE.format(
-                                        match_name=match_name, threshold=RETURN_THRESHOLD, return_value=cote_value
-                                    )
-                                    # Mettre à jour le retour du match
-                                    alerted_matches[match_name] = cote_value
-                            else:
-                                # Alerter pour la première fois et stocker le retour du match
-                                alert_message += ALERT_MESSAGE_TEMPLATE.format(
-                                    match_name=match_name, threshold=RETURN_THRESHOLD, return_value=cote_value
-                                )
-                                alerted_matches[match_name] = cote_value
-
-                    except ValueError:
-                        log_message(f"Impossible de convertir la cote pour le match {match_name}")
-
-            if alert_message:
-                # Envoyer toutes les alertes dans un seul message
-                envoyer_alerte_discord(alert_message)
-
-        except PlaywrightTimeoutError:
-            # Gestion de l'erreur si les données JavaScript ne sont pas chargées dans le délai imparti
-            log_message(TIMEOUT_ERROR_MESSAGE.format(minutes=CHECK_INTERVAL_MINUTES))
-        
-        finally:
-            browser.close()
-
-# Boucle pour récupérer les données toutes les CHECK_INTERVAL_MINUTES minutes
-while True:
-    try:
-        scrape_cotes()
-    except Exception as e:
-        # Capture et gestion de toutes les erreurs
-        log_message(f"Une erreur est survenue : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.")
-    
-    log_message(f"Attente de {CHECK_INTERVAL_MINUTES} minutes avant la prochaine vérification...")
-    time.sleep(CHECK_INTERVAL_MINUTES * 60)  # Conversion en secondes
+if __name__ == "__main__":
+    main()

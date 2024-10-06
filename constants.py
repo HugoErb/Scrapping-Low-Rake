@@ -26,3 +26,6 @@ JS_LOAD_TIMEOUT = 20000
 
 # Augmentation minimale du retour pour renvoyer une alerte (en pourcentage)
 MIN_RETURN_INCREASE = 0.1
+
+# Durée après laquelle un match est supprimé de la liste des matchs alertés
+LIST_EXPIRATION_HOURS = 24
