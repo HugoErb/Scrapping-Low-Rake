@@ -6,14 +6,18 @@ from datetime import datetime, timedelta
 from constants import *  # Importer toutes les constantes
 
 # Configuration du module logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s : %(message)s')
+logging.basicConfig(
+    level=logging.INFO, 
+    format='[%(asctime)s] %(levelname)s : %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Dictionnaire pour stocker les matchs déjà alertés avec leur dernier pourcentage de retour et l'heure de l'alerte
 alerted_matches = {}
 
 def log_message(message, level="info"):
     """
-    Affiche un message avec la date et l'heure actuelles au format français, avec un décalage de 2 heures ajouté, et enregistre dans les logs avec le niveau spécifié.
+    Affiche un message avec la date et l'heure actuelle, et enregistre dans les logs avec le niveau spécifié.
 
     Args:
         message (str): Le message à enregistrer dans les logs.
@@ -28,10 +32,7 @@ def log_message(message, level="info"):
         "debug": logging.debug,
     }.get(level, logging.info)
 
-    # Ajout de 2 heures pour le fuseau horaire français
-    current_time = datetime.now() + timedelta(hours=2)
-    formatted_time = current_time.strftime("%d/%m/%Y %H:%M:%S")
-    logger(f"[{formatted_time}] {message}")
+    logger(f"{message}")
 
 
 def envoyer_alerte_discord(message):
