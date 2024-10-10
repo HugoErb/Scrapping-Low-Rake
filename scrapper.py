@@ -100,6 +100,17 @@ def scrape_cotes(page):
         alert_message = ""  # Initialiser un message vide pour collecter toutes les alertes
 
         for match in matches:
+            # Extraction de la date et de l'heure du match
+            match_datetime = extract_match_datetime(match)
+            if not match_datetime:
+                log_message("Impossible d'extraire la date/heure du match.", "error")
+                continue  # Passer au match suivant si la date/heure n'est pas valide
+
+            # Vérification si le match a déjà commencé
+            if match_datetime < datetime.now():
+                log_message(f"Le match {match_name} a déjà commencé, aucune alerte envoyée.", "info")
+                continue
+
             # Extraction des équipes
             team_elements = match.query_selector_all('div.event-team')
             if len(team_elements) == 2:
@@ -114,7 +125,7 @@ def scrape_cotes(page):
                 try:
                     cote_value = float(cote_text)
                     # Vérification des conditions pour envoyer une alerte
-                    if MAX_RETURN_THRESHOLD >= cote_value >= RETURN_THRESHOLD:
+                    if cote_value >= RETURN_THRESHOLD:
                         # Nettoyer les anciennes alertes avant de vérifier les nouvelles
                         clean_old_alerts()
 
@@ -143,6 +154,30 @@ def scrape_cotes(page):
     except PlaywrightTimeoutError:
         # Gestion de l'erreur si les données JavaScript ne sont pas chargées dans le délai imparti
         log_message(TIMEOUT_ERROR_MESSAGE.format(minutes=CHECK_INTERVAL_MINUTES), "error")
+
+
+def extract_match_datetime(match):
+    """
+    Extrait la date et l'heure d'un match à partir de l'élément HTML.
+
+    Args:
+        match (ElementHandle): L'élément HTML du match.
+
+    Returns:
+        datetime: La date et l'heure du match, ou None si l'extraction échoue.
+    """
+    try:
+        # Extraction de l'élément contenant la date et l'heure du match
+        time_element = match.query_selector('div.event-time')
+        if time_element:
+            # Format attendu: "11/10\n04:00" -> "11/10 04:00"
+            date_time_str = time_element.inner_text().replace("\n", " ").strip()
+            # Ajout de l'année actuelle pour former une date complète
+            date_time_obj = datetime.strptime(f"{date_time_str} {datetime.now().year}", "%d/%m %H:%M %Y")
+            return date_time_obj
+    except Exception as e:
+        log_message(f"Erreur lors de l'extraction de la date/heure du match: {str(e)}", "error")
+    return None
 
 
 def main():
