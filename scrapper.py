@@ -9,7 +9,7 @@ from constants import *  # Importer toutes les constantes
 logging.basicConfig(
     level=logging.INFO, 
     format='[%(asctime)s] %(levelname)s : %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt='%d/%m/%Y %H:%M:%S'
 )
 
 # Dictionnaire pour stocker les matchs déjà alertés avec leur dernier pourcentage de retour et l'heure de l'alerte
@@ -205,7 +205,7 @@ def main():
                     f"Une erreur est survenue : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.",
                     "error")
 
-            log_message(f"Attente de {CHECK_INTERVAL_MINUTES} minutes avant la prochaine vérification...", "info")
+            log_message(f"Prochaine vérification dans {CHECK_INTERVAL_MINUTES} minutes.", "info")
             time.sleep(CHECK_INTERVAL_MINUTES * 60)  # Conversion en secondes
 
 
