@@ -128,8 +128,6 @@ def scrape_cotes(page):
                     cote_value = float(cote_text)
                     # Vérification des conditions pour envoyer une alerte
                     if cote_value >= RETURN_THRESHOLD:
-                        # Nettoyer les anciennes alertes avant de vérifier les nouvelles
-                        clean_old_alerts()
 
                         if match_name in alerted_matches:
                             alert_time, last_return_value = alerted_matches[match_name]
@@ -206,6 +204,7 @@ def main():
                     f"Une erreur est survenue : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.",
                     "error")
 
+            clean_old_alerts()
             log_message(f"Prochaine vérification dans {CHECK_INTERVAL_MINUTES} minutes.", "info")
             time.sleep(CHECK_INTERVAL_MINUTES * 60)  # Conversion en secondes
 
