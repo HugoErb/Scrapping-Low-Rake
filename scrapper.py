@@ -75,7 +75,8 @@ def clean_old_alerts():
     # Suppression des matchs obsolètes
     for match_name in matches_to_remove:
         del alerted_matches[match_name]
-    log_message(f"Match(es) supprimé(s) du dictionnaire : {matches_to_remove}", "debug")
+    log_message(f"Matchs supprimés du dictionnaire : {matches_to_remove}", "debug")
+    log_message(f"Matchs  du dictionnaire : {alerted_matches}", "debug")
 
 
 def scrape_cotes(page):
