@@ -7,7 +7,7 @@ from constants import *  # Importer toutes les constantes
 
 # Configuration du module logging
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.DEBUG, 
     format='[%(asctime)s] %(levelname)s : %(message)s',
     datefmt='%d/%m/%Y %H:%M:%S'
 )
