@@ -32,8 +32,8 @@ def log_message(message, level="info"):
         "debug": logging.debug,
     }.get(level, logging.info)
     
-    if level != "info":
-        logger(f"{message}")
+    #if level != "info":
+    logger(f"{message}")
 
 
 def envoyer_alerte_discord(message):
