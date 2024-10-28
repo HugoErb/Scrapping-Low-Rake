@@ -199,3 +199,7 @@ async def main():
                 log_message(f"Une erreur est survenue dans la boucle principale : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.", "error")
 
             await asyncio.sleep(CHECK_INTERVAL_MINUTES * 60)
+
+# Exécution du script principal en mode asynchrone
+if __name__ == "__main__":
+    asyncio.run(main())
