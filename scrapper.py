@@ -82,60 +82,56 @@ async def scrape_cotes(page):
         page (Page): La page Playwright utilisée pour effectuer le scraping.
 
     Returns:
-        None: Les alertes sont envoyées si les conditions sont remplies, et les erreurs sont gérées.
+        bool: Retourne True si le scraping est réussi, False si une erreur survient (pour permettre un redémarrage).
     """
     try:
-        # Navigue vers la page contenant les cotes et attend le chargement complet
         await page.goto("https://www.coteur.com/comparateur-de-cotes")
         await page.wait_for_selector('span[data-controller="retour"]', timeout=JS_LOAD_TIMEOUT)
-
+        
         # Récupère les éléments représentant les matchs et initialise une variable pour collecter les alertes
         matches = await page.query_selector_all('div.events.d-flex.flex-column.flex-sm-row.flex-wrap')
         alert_message = ""
 
         for match in matches:
-            # Extrait la date/heure du match pour filtrer les matchs déjà commencés
             match_datetime = await extract_match_datetime(match)
             if not match_datetime or match_datetime < datetime.now():
                 continue  # Ignore le match si la date est invalide ou si le match est déjà commencé
 
-            # Extrait les noms des équipes et compose le nom du match
             team_elements = await match.query_selector_all('div.event-team')
             if len(team_elements) == 2:
                 team1 = (await team_elements[0].inner_text()).strip()
                 team2 = (await team_elements[1].inner_text()).strip()
                 match_name = f"{team1} vs {team2}"
 
-            # Extrait et convertit le pourcentage de retour, et vérifie les conditions pour l'alerte
             retour_element = await match.query_selector('span[data-controller="retour"]')
             if retour_element:
                 cote_text = (await retour_element.inner_text()).replace('%', '').replace(',', '.').strip()
                 try:
                     cote_value = float(cote_text)
-                    if cote_value >= RETURN_THRESHOLD:  # Seuil de retour atteint
+                    if cote_value >= RETURN_THRESHOLD:
                         if match_name in alerted_matches:
                             alert_time, last_return_value = alerted_matches[match_name]
-                            # Envoie une nouvelle alerte si le retour a suffisamment augmenté depuis la dernière
                             if cote_value >= last_return_value + MIN_RETURN_INCREASE:
                                 alert_message += ALERT_MESSAGE_TEMPLATE.format(
                                     match_name=match_name, threshold=RETURN_THRESHOLD, return_value=cote_value
                                 )
                                 alerted_matches[match_name] = (datetime.now(), cote_value)
                         else:
-                            # Première alerte pour ce match
                             alert_message += ALERT_MESSAGE_TEMPLATE.format(
                                 match_name=match_name, threshold=RETURN_THRESHOLD, return_value=cote_value
                             )
                             alerted_matches[match_name] = (datetime.now(), cote_value)
                 except ValueError:
                     log_message(f"Impossible de convertir la cote pour le match {match_name}", "error")
-
-        # Envoie toutes les alertes collectées dans un seul message pour éviter les requêtes multiples
+        
         if alert_message:
             await envoyer_alerte_discord(alert_message)
+        
+        return True  # Scraping réussi
 
-    except PlaywrightTimeoutError:
-        log_message(TIMEOUT_ERROR_MESSAGE.format(minutes=CHECK_INTERVAL_MINUTES), "error")
+    except (PlaywrightTimeoutError, Exception) as e:
+        log_message(f"Erreur de scraping ou fermeture de page/navigateur: {str(e)}", "error")
+        return False  # Indique que le scraping a échoué
 
 async def extract_match_datetime(match):
     """
@@ -170,35 +166,36 @@ async def main():
     Returns:
         None: Le scraping est effectué à intervalles réguliers et les alertes sont envoyées.
     """
-    # Initialise Playwright en mode asynchrone et lance le navigateur Chromium en mode headless
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
-        # Compteur pour redémarrer le navigateur régulièrement afin de libérer la mémoire
         iteration_count = 0
         while True:
             try:
-                await scrape_cotes(page)  # Lance le scraping des cotes
+                success = await scrape_cotes(page)
+                
+                # Vérifie si le scraping a échoué, auquel cas on redémarre le navigateur
+                if not success:
+                    await page.close()
+                    await browser.close()
+                    browser = await p.chromium.launch(headless=True)
+                    page = await browser.new_page()
+                    iteration_count = 0  # Réinitialise le compteur
+
+                clean_old_alerts()
+                log_message(f"Prochaine vérification dans {CHECK_INTERVAL_MINUTES} minutes.", "info")
+
+                # Compteur pour redémarrer le navigateur périodiquement
+                iteration_count += 1
+                if iteration_count >= PLAYWRIGHT_SESSION_INTERVAL_ITERATION:
+                    await page.close()
+                    await browser.close()
+                    browser = await p.chromium.launch(headless=True)
+                    page = await browser.new_page()
+                    iteration_count = 0
+
             except Exception as e:
-                log_message(f"Une erreur est survenue : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.", "error")
+                log_message(f"Une erreur est survenue dans la boucle principale : {str(e)}. Nouvelle tentative dans {CHECK_INTERVAL_MINUTES} minutes.", "error")
 
-            # Nettoie les alertes obsolètes et affiche une log de suivi
-            clean_old_alerts()
-            log_message(f"Prochaine vérification dans {CHECK_INTERVAL_MINUTES} minutes.", "info")
-
-            # Redémarre le navigateur toutes les 100 itérations pour libérer la mémoire utilisée
-            iteration_count += 1
-            if iteration_count >= 100:
-                await page.close()
-                await browser.close()
-                browser = await p.chromium.launch(headless=True)
-                page = await browser.new_page()
-                iteration_count = 0  # Réinitialise le compteur après redémarrage
-
-            # Attente non-bloquante avant la prochaine itération
             await asyncio.sleep(CHECK_INTERVAL_MINUTES * 60)
-
-# Exécution du script principal en mode asynchrone
-if __name__ == "__main__":
-    asyncio.run(main())

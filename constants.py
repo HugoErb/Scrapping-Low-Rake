@@ -21,6 +21,9 @@ RETURN_THRESHOLD = 98.0
 # Nombre de minutes entre chaque vérification
 CHECK_INTERVAL_MINUTES = 5
 
+# Nombre d'itérations après lesquelles on redémarre le navigateur Playwright
+PLAYWRIGHT_SESSION_INTERVAL_ITERATION = 50
+
 # Augmentation minimale du retour pour renvoyer une alerte (en pourcentage)
 MIN_RETURN_INCREASE = 0.1
 
