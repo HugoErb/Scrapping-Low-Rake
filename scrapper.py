@@ -74,35 +74,48 @@ def clean_old_alerts():
     log_message(f"Matchs supprimés du dictionnaire : {matches_to_remove}", "debug")
 
 async def scrape_cotes(page):
-    """
-    Scrape les cotes des matchs sur le site web "coteur.com".
-    Si un match atteint un seuil de retour ou que le retour augmente suffisamment, une alerte est envoyée.
-
-    Args:
-        page (Page): La page Playwright utilisée pour effectuer le scraping.
-
-    Returns:
-        bool: Retourne True si le scraping est réussi, False si une erreur survient (pour permettre un redémarrage).
-    """
     try:
-        await page.goto("https://www.coteur.com/comparateur-de-cotes")
+        await page.goto(COTEUR_URL)
         await page.wait_for_selector('span[data-controller="retour"]', timeout=JS_LOAD_TIMEOUT)
-        
-        # Récupère les éléments représentant les matchs et initialise une variable pour collecter les alertes
         matches = await page.query_selector_all('div.events.d-flex.flex-column.flex-sm-row.flex-wrap')
         alert_message = ""
 
         for match in matches:
+            # Initialiser les variables nécessaires
+            match_name = None
+            odds_display = ""
+
+            # Extraction de la date et heure du match
             match_datetime = await extract_match_datetime(match)
             if not match_datetime or match_datetime < datetime.now():
                 continue  # Ignore le match si la date est invalide ou si le match est déjà commencé
 
+            # Extraction des équipes
             team_elements = await match.query_selector_all('div.event-team')
             if len(team_elements) == 2:
                 team1 = (await team_elements[0].inner_text()).strip()
                 team2 = (await team_elements[1].inner_text()).strip()
                 match_name = f"{team1} vs {team2}"
 
+            # Extraction des cotes (victoire équipe 1, match nul, victoire équipe 2)
+            odds_elements = await match.query_selector_all('div.event-odd strong[data-odd-target="odds"]')
+            if len(odds_elements) >= 2:  # Vérifie qu'il y a au moins deux cotes (évite les erreurs)
+                team1_odds = (await odds_elements[0].inner_text()).strip()
+                team2_odds = (await odds_elements[1].inner_text()).strip()
+
+                # Si la cote du match nul existe, l'inclure dans l'affichage
+                if len(odds_elements) > 2:
+                    draw_odds = (await odds_elements[2].inner_text()).strip()
+                    odds_display = f"**{team1_odds}** - **{draw_odds}** - **{team2_odds}**"
+                else:
+                    odds_display = f"**{team1_odds}** - **{team2_odds}**"
+
+            # Vérifie que match_name a bien été défini avant de continuer
+            if match_name is None:
+                log_message("Informations de match incomplètes, alerte ignorée.", "debug")
+                continue
+
+            # Extraction du retour
             retour_element = await match.query_selector('span[data-controller="retour"]')
             if retour_element:
                 cote_text = (await retour_element.inner_text()).replace('%', '').replace(',', '.').strip()
@@ -113,12 +126,20 @@ async def scrape_cotes(page):
                             alert_time, last_return_value = alerted_matches[match_name]
                             if cote_value >= last_return_value + MIN_RETURN_INCREASE:
                                 alert_message += ALERT_MESSAGE_TEMPLATE.format(
-                                    match_name=match_name, threshold=RETURN_THRESHOLD, return_value=cote_value
+                                    match_name=match_name,
+                                    threshold=RETURN_THRESHOLD,
+                                    return_value=cote_value,
+                                    match_datetime=match_datetime.strftime("%d/%m %Hh%M"),
+                                    odds_display=odds_display
                                 )
                                 alerted_matches[match_name] = (datetime.now(), cote_value)
                         else:
                             alert_message += ALERT_MESSAGE_TEMPLATE.format(
-                                match_name=match_name, threshold=RETURN_THRESHOLD, return_value=cote_value
+                                match_name=match_name,
+                                threshold=RETURN_THRESHOLD,
+                                return_value=cote_value,
+                                match_datetime=match_datetime.strftime("%d/%m %Hh%M"),
+                                odds_display=odds_display
                             )
                             alerted_matches[match_name] = (datetime.now(), cote_value)
                 except ValueError:
@@ -127,11 +148,11 @@ async def scrape_cotes(page):
         if alert_message:
             await envoyer_alerte_discord(alert_message)
         
-        return True  # Scraping réussi
+        return True
 
     except (PlaywrightTimeoutError, Exception) as e:
         log_message(f"Erreur de scraping ou fermeture de page/navigateur: {str(e)}", "error")
-        return False  # Indique que le scraping a échoué
+        return False
 
 async def extract_match_datetime(match):
     """

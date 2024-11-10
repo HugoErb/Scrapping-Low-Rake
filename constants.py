@@ -2,9 +2,13 @@
 
 # URL du webhook Discord
 DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1287478753877823591/w5pgU1Xc6DRbKZ5wLztFJmc2wBJ9FxkjfHdM02GCKdO00CDMtqMo2mezCsw0pxh-aRlb'
+COTEUR_URL = "https://www.coteur.com/comparateur-de-cotes"
 
 # Textes
-ALERT_MESSAGE_TEMPLATE = "Le match **{match_name}** dépasse {threshold}% avec un retour de **{return_value}%**\n"
+ALERT_MESSAGE_TEMPLATE = (
+    "Le match **{match_name}** dépasse {threshold}% avec un retour de **{return_value}%**   "
+    "({match_datetime}, {odds_display}).\n"
+)
 DISCORD_SUCCESS_MESSAGE = "Message envoyé sur Discord:\n{message}"
 DISCORD_ERROR_MESSAGE = "Erreur lors de l'envoi du message sur Discord: {status_code}"
 TIMEOUT_ERROR_MESSAGE = "Données JavaScript non chargées dans le délai imparti. Nouvelle tentative dans {minutes} minutes."
