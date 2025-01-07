@@ -1,7 +1,7 @@
 # constants.py
 
 # URL du webhook Discord
-DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1287478753877823591/w5pgU1Xc6DRbKZ5wLztFJmc2wBJ9FxkjfHdM02GCKdO00CDMtqMo2mezCsw0pxh-aRlb'
+DISCORD_WEBHOOK_URL = ''
 COTEUR_URL = "https://www.coteur.com/comparateur-de-cotes"
 
 # Textes
