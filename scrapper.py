@@ -74,22 +74,6 @@ def clean_old_alerts():
     log_message(f"Matchs supprimés du dictionnaire : {matches_to_remove}", "debug")
 
 async def scrape_cotes(page):
-    """
-    Scrape les cotes des matchs depuis une page web.
-
-    Cette méthode récupère les informations des matchs, y compris les équipes, les cotes, et les dates. 
-    Les matchs sont ignorés si :
-    - La date est invalide ou passée.
-    - L'une des cotes provient du bookmaker Unibet (identifié par la classe 'circleBookIconMini-b20').
-
-    Les alertes sont envoyées pour les matchs avec un retour supérieur ou égal à un seuil défini.
-
-    Arguments:
-        page: Instance de la page Playwright à scraper.
-
-    Retourne:
-        bool: True si le scraping a réussi, False sinon.
-    """
     try:
         await page.goto(COTEUR_URL)
         await page.wait_for_selector('span[data-controller="retour"]', timeout=JS_LOAD_TIMEOUT)
@@ -115,17 +99,6 @@ async def scrape_cotes(page):
 
             # Extraction des cotes (victoire équipe 1, match nul, victoire équipe 2)
             odds_elements = await match.query_selector_all('div.event-odd strong[data-odd-target="odds"]')
-            bookmaker_elements = await match.query_selector_all('div.event-odd div[data-odd-target="book"]')
-
-            # Vérifie si l'un des bookmakers est Unibet (circleBookIconMini-b20)
-            is_unibet = any(
-                'circleBookIconMini-b20' in (await bookmaker.get_attribute('class'))
-                for bookmaker in bookmaker_elements
-            )
-            if is_unibet:
-                log_message(f"Match ignoré car une cote provient d'Unibet: {match_name}", "debug")
-                continue
-
             if len(odds_elements) >= 2:  # Vérifie qu'il y a au moins deux cotes (évite les erreurs)
                 team1_odds = (await odds_elements[0].inner_text()).strip()
                 team2_odds = (await odds_elements[1].inner_text()).strip()
