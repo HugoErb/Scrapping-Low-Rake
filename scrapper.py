@@ -1,5 +1,7 @@
 import logging
 import asyncio
+import re
+
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from discord_webhook import DiscordWebhook
 from datetime import datetime, timedelta
@@ -96,6 +98,9 @@ async def scrape_cotes(page):
         matches = await page.query_selector_all('div.events.d-flex.flex-column.flex-sm-row.flex-wrap')
         alert_message = ""
 
+        # Création d'un dictionnaire pour retrouver le nom du bookmaker
+        bookmaker_dict = {str(bookmaker["id"]): bookmaker["name"] for bookmaker in BOOKMAKERS}
+
         for match in matches:
             # Initialiser les variables nécessaires
             match_name = None
@@ -119,16 +124,26 @@ async def scrape_cotes(page):
             odds_elements = await match.query_selector_all('div.event-odd strong[data-odd-target="odds"]')
             bookmaker_elements = await match.query_selector_all('div.event-odd div[data-odd-target="book"]')
 
-            # Vérifie si l'un des bookmakers est Unibet (circleBookIconMini-b20)
-            is_unibet = any(
-                'circleBookIconMini-b20' in class_attr
-                for class_attr in [await bookmaker.get_attribute('class') for bookmaker in bookmaker_elements]
-            )
+
+            # Extraction des noms des bookmakers via la classe CSS 'circleBookIconMini-bXX'
+            bookmaker_names = []
+            for bookmaker in bookmaker_elements:
+                class_attr = await bookmaker.get_attribute("class")
+                if class_attr:
+                    match = re.search(r'circleBookIconMini-b(\d+)', class_attr)
+                    if match:
+                        book_id = match.group(1)
+                        if book_id in bookmaker_dict:
+                            bookmaker_names.append(bookmaker_dict[book_id])
+
+            # Vérifie si l'un des bookmakers est Unibet, si c'est le cas on passe le match
+            is_unibet = "Unibet" in bookmaker_names
             if is_unibet:
                 log_message(f"Match ignoré car une cote provient d'Unibet: {match_name}", "debug")
                 continue
 
-            if len(odds_elements) >= 2:  # Vérifie qu'il y a au moins deux cotes (évite les erreurs)
+            # Vérifie qu'il y a au moins deux cotes (évite les erreurs)
+            if len(odds_elements) >= 2:
                 team1_odds = (await odds_elements[0].inner_text()).strip()
                 team2_odds = (await odds_elements[1].inner_text()).strip()
 
@@ -145,34 +160,7 @@ async def scrape_cotes(page):
                 continue
 
             # Extraction du retour
-            retour_element = await match.query_selector('span[data-controller="retour"]')
-            if retour_element:
-                cote_text = (await retour_element.inner_text()).replace('%', '').replace(',', '.').strip()
-                try:
-                    cote_value = float(cote_text)
-                    if cote_value >= RETURN_THRESHOLD:
-                        if match_name in alerted_matches:
-                            alert_time, last_return_value = alerted_matches[match_name]
-                            if cote_value >= last_return_value + MIN_RETURN_INCREASE:
-                                alert_message += ALERT_MESSAGE_TEMPLATE.format(
-                                    match_name=match_name,
-                                    threshold=RETURN_THRESHOLD,
-                                    return_value=cote_value,
-                                    match_datetime=match_datetime.strftime("%d/%m %Hh%M"),
-                                    odds_display=odds_display
-                                )
-                                alerted_matches[match_name] = (datetime.now(), cote_value)
-                        else:
-                            alert_message += ALERT_MESSAGE_TEMPLATE.format(
-                                match_name=match_name,
-                                threshold=RETURN_THRESHOLD,
-                                return_value=cote_value,
-                                match_datetime=match_datetime.strftime("%d/%m %Hh%M"),
-                                odds_display=odds_display
-                            )
-                            alerted_matches[match_name] = (datetime.now(), cote_value)
-                except ValueError:
-                    log_message(f"Impossible de convertir la cote pour le match {match_name}", "error")
+            alert_message += await extract_retour_value(match, match_name, match_datetime, odds_display)
         
         if alert_message:
             await envoyer_alerte_discord(alert_message)
@@ -206,6 +194,60 @@ async def extract_match_datetime(match):
     except Exception as e:
         log_message(f"Erreur lors de l'extraction de la date/heure du match: {str(e)}", "error")
     return None
+
+
+async def extract_retour_value(match, match_name, match_datetime, odds_display):
+    """
+    Extrait la valeur du retour d'un match et génère une alerte si la valeur dépasse un seuil.
+
+    Arguments:
+        match: L'élément HTML du match contenant les informations.
+        match_name: Le nom du match (ex: "Équipe A vs Équipe B").
+        match_datetime: L'objet datetime du match.
+        odds_display: Une chaîne formatée des cotes et bookmakers.
+
+    Retourne:
+        str: Un message d'alerte si la cote dépasse le seuil, sinon une chaîne vide.
+    """
+    # Sélectionne l'élément contenant la valeur du retour
+    retour_element = await match.query_selector('span[data-controller="retour"]')
+    if retour_element:
+        cote_text = (await retour_element.inner_text()).replace('%', '').replace(',', '.').strip()
+        try:
+            cote_value = float(cote_text)  # Conversion en nombre flottant
+
+            # Vérifie si la valeur du retour dépasse le seuil
+            if cote_value >= RETURN_THRESHOLD:
+                if match_name in alerted_matches:
+                    alert_time, last_return_value = alerted_matches[match_name]
+
+                    # Vérifie si la nouvelle cote est suffisamment plus élevée que la précédente
+                    if cote_value >= last_return_value + MIN_RETURN_INCREASE:
+                        alert_message = ALERT_MESSAGE_TEMPLATE.format(
+                            match_name=match_name,
+                            threshold=RETURN_THRESHOLD,
+                            return_value=cote_value,
+                            match_datetime=match_datetime.strftime("%d/%m %Hh%M"),
+                            odds_display=odds_display
+                        )
+                        alerted_matches[match_name] = (datetime.now(), cote_value)
+                        return alert_message
+                else:
+                    # Crée une nouvelle alerte si le match n'a pas encore été signalé
+                    alert_message = ALERT_MESSAGE_TEMPLATE.format(
+                        match_name=match_name,
+                        threshold=RETURN_THRESHOLD,
+                        return_value=cote_value,
+                        match_datetime=match_datetime.strftime("%d/%m %Hh%M"),
+                        odds_display=odds_display
+                    )
+                    alerted_matches[match_name] = (datetime.now(), cote_value)
+                    return alert_message
+        except ValueError:
+            log_message(f"Impossible de convertir la cote pour le match {match_name}", "error")
+
+    # Retourne une chaîne vide si aucune alerte n'est générée
+    return ""
 
 async def main():
     """
