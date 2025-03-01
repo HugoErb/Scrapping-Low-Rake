@@ -277,7 +277,7 @@ async def main():
                     iteration_count = 0  # Réinitialise le compteur
 
                 clean_old_alerts()
-                log_message(f"Prochaine vérification dans {CHECK_INTERVAL_MINUTES} minutes.", "info")
+                log_message(f"Prochaine vérif : {CHECK_INTERVAL_MINUTES} mins.", "info")
 
                 # Compteur pour redémarrer le navigateur périodiquement
                 iteration_count += 1
