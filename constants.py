@@ -19,7 +19,7 @@ JS_LOAD_TIMEOUT = 20000
 HTTP_SUCCESS_CODES = [200, 204]
 
 # Seuil de pourcentage de retour
-RETURN_THRESHOLD = 98.0
+RETURN_THRESHOLD = 98.5
 
 # Nombre de minutes entre chaque vérification
 CHECK_INTERVAL_MINUTES = 5
