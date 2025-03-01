@@ -3,7 +3,7 @@ import asyncio
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from discord_webhook import DiscordWebhook
 from datetime import datetime, timedelta
-from constants import *  # Importer toutes les constantes
+from constants import *
 
 # Configuration du module logging
 logging.basicConfig(
@@ -87,8 +87,10 @@ async def scrape_cotes(page):
 
             # Extraction de la date et heure du match
             match_datetime = await extract_match_datetime(match)
+
+            # Ignore le match si la date est invalide ou si le match est déjà commencé
             if not match_datetime or match_datetime < datetime.now():
-                continue  # Ignore le match si la date est invalide ou si le match est déjà commencé
+                continue
 
             # Extraction des équipes
             team_elements = await match.query_selector_all('div.event-team')
