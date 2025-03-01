@@ -1,3 +1,4 @@
 venv/
 output.log
 constants.py
+__pycache__/constants.cpython-312.pyc
