@@ -130,9 +130,9 @@ async def scrape_cotes(page):
             for bookmaker in bookmaker_elements:
                 class_attr = await bookmaker.get_attribute("class")
                 if class_attr:
-                    match = re.search(r'circleBookIconMini-b(\d+)', class_attr)
-                    if match:
-                        book_id = match.group(1)
+                    regex_match = re.search(r'circleBookIconMini-b(\d+)', class_attr)
+                    if regex_match:
+                        book_id = regex_match.group(1)
                         if book_id in bookmaker_dict:
                             bookmaker_names.append(bookmaker_dict[book_id])
 
@@ -248,6 +248,7 @@ async def extract_retour_value(match, match_name, match_datetime, odds_display):
 
     # Retourne une chaîne vide si aucune alerte n'est générée
     return ""
+
 
 async def main():
     """
